@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My AI Base — local, private, no API</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
+<style>
+  :root {
+    --bg: #0d1017;
+    --panel: #161a24;
+    --panel2: #1e2331;
+    --border: #2a3040;
+    --text: #e8eaf0;
+    --muted: #98a0b3;
+    --accent: #7c5cff;
+    --accent2: #4f9cff;
+    --grad: linear-gradient(135deg, #7c5cff, #4f9cff);
+    --ok: #3ddc84;
+    --warn: #ffb84d;
+    --err: #ff6b6b;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans",
+      "Noto Sans Malayalam", "Noto Sans Devanagari", "Noto Sans Tamil", sans-serif;
+    background: var(--bg); color: var(--text);
+    display: flex; flex-direction: column;
+  }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 18px; background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 20;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .logo { width: 34px; height: 34px; border-radius: 9px; background: var(--grad);
+    display: flex; align-items: center; justify-content: center; font-size: 17px; }
+  .brand h1 { font-size: 15px; }
+  .brand .sub { font-size: 11px; color: var(--muted); }
+  .hactions { display: flex; gap: 8px; align-items: center; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; margin-right: 6px; }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .dot.load { background: var(--warn); animation: pulse 1s infinite; }
+  .dot.err { background: var(--err); }
+  @keyframes pulse { 50% { opacity: .3; } }
+  #modelStatus { font-size: 12px; color: var(--muted); display: flex; align-items: center; cursor: pointer; }
+  button.btn {
+    background: var(--panel2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 13px; font-size: 13px; cursor: pointer;
+    font-family: inherit; transition: border-color .15s;
+  }
+  button.btn:hover { border-color: var(--accent); }
+  button.btn.primary { background: var(--grad); border: none; color: #fff; font-weight: 600; }
+
+  #notice {
+    display: none; padding: 10px 18px; font-size: 13px; line-height: 1.5;
+    background: #3a2a12; color: #ffd9a0; border-bottom: 1px solid #5a4322;
+  }
+  #notice.show { display: block; }
+
+  #chat {
+    flex: 1; overflow-y: auto; padding: 22px 14px;
+    display: flex; flex-direction: column; gap: 13px;
+  }
+  .msg {
+    max-width: 80%; padding: 12px 16px; border-radius: 16px;
+    line-height: 1.65; font-size: 15px; overflow-wrap: break-word;
+    animation: pop .18s ease;
+  }
+  @keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .msg.user { align-self: flex-end; background: var(--grad); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.bot { align-self: flex-start; background: var(--panel2); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .msg.bot.error { border-color: var(--err); color: #ffc2c2; }
+  .msg code { background: rgba(0,0,0,.35); padding: 2px 6px; border-radius: 4px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 13px; }
+  .msg pre {
+    background: #10131c; border: 1px solid var(--border);
+    padding: 12px; border-radius: 9px; overflow-x: auto; margin: 8px 0;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 13px; line-height: 1.5;
+    position: relative; white-space: pre;
+  }
+  .copybtn {
+    position: absolute; top: 6px; right: 6px;
+    background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
+    border-radius: 6px; font-size: 11px; padding: 3px 9px; cursor: pointer; font-family: inherit;
+  }
+  .copybtn:hover { color: var(--text); border-color: var(--accent); }
+  .msg .meta { display: block; font-size: 10px; opacity: .55; margin-top: 6px; text-align: right; }
+  .msg a { color: var(--accent2); }
+  .srcbox { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border);
+    font-size: 12px; color: var(--muted); display: grid; gap: 3px; }
+  .typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--muted);
+    display: inline-block; margin-right: 4px; animation: blink 1.2s infinite; }
+  .typing span:nth-child(2) { animation-delay: .2s; }
+  .typing span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+
+  .card { align-self: flex-start; max-width: 86%; background: var(--panel2);
+    border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; font-size: 14px; }
+  .card h3 { font-size: 13px; margin-bottom: 8px; color: var(--accent2); }
+  .card .item { padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.05); line-height: 1.5; }
+  .card .item:last-child { border-bottom: none; }
+  .card .item b { display: block; font-size: 14px; }
+  .card .item .small { font-size: 12px; color: var(--muted); }
+  .card .item a { color: var(--accent2); font-size: 12px; text-decoration: none; }
+  .card .btnrow { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .card textarea {
+    width: 100%; background: #10131c; border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 10px; font-size: 13px; font-family: inherit; min-height: 90px; resize: vertical;
+  }
+
+  .welcome { align-self: center; text-align: center; max-width: 600px; margin: auto 0; color: var(--muted); padding: 0 10px; }
+  .welcome .big { font-size: 42px; margin-bottom: 10px; }
+  .welcome h2 { color: var(--text); font-size: 20px; margin-bottom: 8px; }
+  .welcome p { font-size: 14px; line-height: 1.7; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
+  .chip { background: var(--panel2); border: 1px solid var(--border); border-radius: 999px;
+    padding: 8px 14px; font-size: 13px; cursor: pointer; color: var(--text); font-family: inherit; }
+  .chip:hover { border-color: var(--accent); }
+  .steps { text-align: left; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px 18px; margin-top: 18px; font-size: 13px; line-height: 1.8; }
+  .steps b { color: var(--text); }
+
+  footer { padding: 10px 14px 16px; background: var(--panel); border-top: 1px solid var(--border); }
+  .tools { display: flex; gap: 6px; max-width: 850px; margin: 0 auto 8px; flex-wrap: wrap; }
+  .tool {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 999px;
+    padding: 6px 12px; font-size: 12.5px; cursor: pointer; color: var(--muted); font-family: inherit;
+  }
+  .tool.on { color: #fff; border-color: var(--accent); background: rgba(124,92,255,.18); }
+  .composer { display: flex; gap: 10px; align-items: flex-end; max-width: 850px; margin: 0 auto; }
+  #input {
+    flex: 1; background: var(--panel2); border: 1px solid var(--border); border-radius: 12px;
+    color: var(--text); padding: 12px 16px; font-size: 15px; font-family: inherit;
+    resize: none; max-height: 140px; min-height: 46px; outline: none;
+  }
+  #input:focus { border-color: var(--accent); }
+  #send { height: 46px; width: 46px; border-radius: 12px; border: none;
+    background: var(--grad); color: #fff; font-size: 17px; cursor: pointer; flex-shrink: 0; }
+  #send:disabled { opacity: .4; cursor: not-allowed; }
+  .hint { text-align: center; font-size: 11px; color: var(--muted); margin-top: 7px; }
+
+  #overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; z-index: 50; }
+  #overlay.open { display: block; }
+  #modelPanel {
+    position: fixed; top: 0; right: 0; bottom: 0; width: 380px; max-width: 92vw;
+    background: var(--panel); border-left: 1px solid var(--border); z-index: 51;
+    transform: translateX(100%); transition: transform .22s ease;
+    overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px;
+  }
+  #modelPanel.open { transform: none; }
+  #modelPanel h2 { font-size: 15px; display: flex; justify-content: space-between; align-items: center; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .field select, .field input, .field textarea {
+    width: 100%; background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); padding: 10px 12px; font-size: 13px; font-family: inherit; outline: none;
+  }
+  .field .note { font-size: 11px; color: var(--muted); margin-top: 5px; line-height: 1.55; }
+  #progwrap { display: none; }
+  #progwrap.show { display: block; }
+  #progbar { height: 8px; background: var(--panel2); border-radius: 99px; overflow: hidden; margin: 6px 0; }
+  #progfill { height: 100%; width: 0%; background: var(--grad); transition: width .3s; }
+  #progtext { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+  #toast {
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--panel2); border: 1px solid var(--accent); color: var(--text);
+    padding: 10px 18px; border-radius: 10px; font-size: 13px;
+    transition: transform .25s ease; z-index: 99;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo">🧠</div>
+    <div>
+      <h1>My AI Base</h1>
+      <div class="sub">100% local AI · no API · private</div>
+    </div>
+  </div>
+  <div class="hactions">
+    <span id="modelStatus" title="Open model panel"><span class="dot" id="statusDot"></span><span id="statusText">no model</span></span>
+    <button class="btn" id="newChat">＋ New chat</button>
+    <button class="btn" id="openPanel">⚙ Model</button>
+  </div>
+</header>
+
+<div id="notice"></div>
+
+<div id="chat">
+  <div class="welcome" id="welcome">
+    <div class="big">🧠</div>
+    <h2>Your own AI — running inside this browser</h2>
+    <p>Open-source AI models run locally with WebGPU. No API key, no server, no cost, fully private.
+       ഏത് ഭാഷയിലും ചോദിക്കാം — code, summary, search, places, email draft എല്ലാം.</p>
+    <div class="steps" id="stepsBox">
+      <b>തുടങ്ങാൻ (to start):</b><br>
+      1. <b>⚙ Model</b> തുറന്ന് ഒരു model തിരഞ്ഞെടുത്ത് <b>Load</b> അമർത്തുക (1B model ≈ 700 MB, ഒരിക്കൽ മാത്രം — പിന്നെ browser cache-ൽ തന്നെ).<br>
+      2. Download finish ആയാൽ green dot കാണിക്കും — എന്നിട്ട് chat തുടങ്ങാം.<br>
+      <b>Tools:</b> 🔍 web search (Wikipedia) · 📍 places (OpenStreetMap) · 📄 document summary · ✉️ email draft — താഴെയുള്ള buttons ഉപയോഗിക്കുക.
+    </div>
+    <div class="chips">
+      <button class="chip">Write a Python function to check prime numbers</button>
+      <button class="chip">ഒരു ചെറിയ കഥ പറയൂ</button>
+      <button class="chip">search: Kerala monsoon</button>
+      <button class="chip">place: Kozhikode beach</button>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="tools">
+    <button class="tool" data-tool="search">🔍 Web search</button>
+    <button class="tool" data-tool="place">📍 Places</button>
+    <button class="tool" data-tool="doc">📄 Document</button>
+    <button class="tool" data-tool="email">✉️ Email draft</button>
+    <button class="tool" data-tool="code">💻 Code mode</button>
+  </div>
+  <div class="composer">
+    <textarea id="input" rows="1" placeholder="Ask anything… (Shift+Enter = new line). Commands: /search, /place, /email, /summarize, /help"></textarea>
+    <button id="send" title="Send">➤</button>
+  </div>
+  <div class="hint">Runs fully on your device. Works best in Chrome / Edge (WebGPU needed).</div>
+</footer>
+
+<div id="overlay"></div>
+<aside id="modelPanel">
+  <h2>AI Model <button class="btn" id="closePanel">✕</button></h2>
+
+  <div class="field">
+    <label for="modelSel">Choose a model</label>
+    <select id="modelSel"></select>
+    <div class="note">Smaller = faster download & more speed. Recommended first model: Llama-3.2-1B or Qwen2.5-0.5B. Models are cached — second load is quick.</div>
+  </div>
+
+  <div id="progwrap">
+    <div id="progbar"><div id="progfill"></div></div>
+    <div id="progtext"></div>
+  </div>
+
+  <button class="btn primary" id="loadBtn">⬇ Load model</button>
+
+  <div class="field">
+    <label for="persona">Personality / role (optional)</label>
+    <textarea id="persona" placeholder="e.g. You are a friendly teacher who explains with simple examples."></textarea>
+  </div>
+
+  <button class="btn" id="savePersona" style="margin-top:-6px;">Save personality</button>
+
+  <div class="field">
+    <div class="note">
+      This app is 100% static — it runs from GitHub Pages, downloads the open model directly to your browser,
+      and all conversations stay on your device. No API keys, no tracking.
+    </div>
+  </div>
+</aside>
+
+<input type="file" id="fileInput" accept=".txt,.md,.csv,.json,.log,.xml,.html,.js,.py" style="display:none">
+<div id="toast"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
