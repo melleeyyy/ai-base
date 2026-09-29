@@ -114,6 +114,9 @@ function pickDefault(list) {
   return list.length ? list[0].model_id : "";
 }
 
+function shortName(id) {
+  return (id || "").replace(/-Instruct.*/, "");
+}
 function populateModels() {
   let list = [];
   try { list = webllm.prebuiltAppConfig.model_list || []; } catch (e) {}
@@ -132,7 +135,7 @@ function populateModels() {
   const def = settings.modelId && list.some((m) => m.model_id === settings.modelId)
     ? settings.modelId : pickDefault(list);
   sel.value = def;
-  setStatus(engine ? "ok" : "", def.split("-")[0] + (engine ? " · ready" : " · not loaded"));
+  setStatus(engine ? "ok" : "", shortName(def));
 }
 
 async function loadModel(modelId) {
@@ -151,11 +154,10 @@ async function loadModel(modelId) {
     });
     settings.modelId = modelId;
     persist();
-    setStatus("ok", modelId.split("-")[0] + " · ready");
-    toast("Model ready ✓ — start chatting!");
-    addMsg("assistant", "_Model loaded: " + modelId + ". Ready! എന്ത് ചോദിക്കാം?_");
+    setStatus("ok", shortName(modelId));
+    toast("Ready ✓");
   } catch (err) {
-    setStatus("err", "load failed");
+    setStatus("err", "error");
     addMsg("assistant", "⚠ Model load failed: " + (err.message || err) +
       "\n\nTry a smaller model (Llama-3.2-1B / Qwen2.5-0.5B), close other tabs, or use Chrome/Edge.", { error: true });
   } finally {
@@ -225,15 +227,15 @@ async function wikiSearch(query, lang) {
 async function doSearch(query) {
   if (!engine) return noModel();
   const t = typingBubble();
-  t.innerHTML = "🔍 Searching Wikipedia…";
+  t.innerHTML = "Searching…";
   const results = await wikiSearch(query);
   if (!results.length) {
     t.remove();
-    addMsg("assistant", "No Wikipedia results found for \"" + query + "\". Try different words.", { error: true });
+    addMsg("assistant", "No results for \"" + query + "\".", { error: true });
     done();
     return;
   }
-  t.innerHTML = "🧠 Reading results, thinking…";
+  t.innerHTML = "Reading…";
   const ctx = results.map((r, i) => "[" + (i + 1) + "] " + r.title + ": " + r.extract).join("\n\n");
   const msgs = [
     { role: "system", content: systemPrompt() },
@@ -274,7 +276,7 @@ function finishBot(el, full) {
 /* ---------------- TOOL: places (OpenStreetMap) ---------------- */
 async function doPlaces(query) {
   const t = typingBubble();
-  t.innerHTML = "📍 Searching places…";
+  t.innerHTML = "Searching…";
   try {
     const u = "https://nominatim.openstreetmap.org/search?q=" + encodeURIComponent(query) +
       "&format=json&limit=5&addressdetails=1";
@@ -282,7 +284,7 @@ async function doPlaces(query) {
     const places = await r.json();
     t.remove();
     if (!places.length) {
-      addMsg("assistant", "No places found for \"" + query + "\".", { error: true });
+      addMsg("assistant", "No places found.", { error: true });
       return;
     }
     const card = addCard("📍 " + places.length + " place(s) — " + query);
@@ -306,7 +308,7 @@ async function doPlaces(query) {
     persistChat();
   } catch (err) {
     t.remove();
-    addMsg("assistant", "⚠ Place search failed: " + (err.message || err), { error: true });
+    addMsg("assistant", "⚠ " + (err.message || err), { error: true });
   }
   done();
 }
@@ -326,15 +328,15 @@ function chunkText(text, size = 3500) {
 
 async function doDocSummary() {
   if (!docText) {
-    addMsg("assistant", "No document loaded. Click 📄 Document and choose a .txt/.md/.csv file first.", { error: true });
+    addMsg("assistant", "Load a document first (📄).", { error: true });
     return;
   }
   const t = typingBubble();
-  t.innerHTML = "📄 Reading document…";
+  t.innerHTML = "Reading…";
   const chunks = chunkText(docText).slice(0, 6);
   const partSummaries = [];
   for (let i = 0; i < chunks.length; i++) {
-    t.innerHTML = "📄 Summarizing part " + (i + 1) + "/" + chunks.length + "…";
+    t.innerHTML = "Summarizing " + (i + 1) + "/" + chunks.length + "…";
     const s = await llm([
       { role: "system", content: "You summarize documents. Reply in the user's language." },
       { role: "user", content: "Summarize this part in 3-4 bullet points (- ):\n\n" + chunks[i].slice(0, 3500) },
@@ -343,7 +345,7 @@ async function doDocSummary() {
   }
   let final;
   if (partSummaries.length > 1) {
-    t.innerHTML = "🧠 Combining summaries…";
+    t.innerHTML = "Reading…";
     final = await llm([
       { role: "system", content: "You summarize documents. Reply in the user's language." },
       { role: "user", content: "Combine these section summaries into one clear summary with the key points:\n\n" +
@@ -364,8 +366,7 @@ async function handleDocFile(file) {
   const info = document.createElement("div");
   info.className = "small";
   info.style.color = "var(--muted)";
-  info.textContent = docText.length.toLocaleString() + " characters loaded. " +
-    "Now ask questions about it, or press the button below to summarize.";
+  info.textContent = docText.length.toLocaleString() + " characters — summarize or ask anything";
   const row = document.createElement("div");
   row.className = "btnrow";
   const b1 = document.createElement("button");
@@ -378,14 +379,13 @@ async function handleDocFile(file) {
   b2.onclick = () => { docText = null; card.remove(); toast("Document cleared"); };
   row.appendChild(b1); row.appendChild(b2);
   card.appendChild(info); card.appendChild(row);
-  addMsg("assistant", "_Document loaded (" + docText.length.toLocaleString() + " chars). Type /summarize or ask me anything about it._");
 }
 
 /* ---------------- TOOL: email draft ---------------- */
 async function doEmail(requestText) {
   if (!engine) return noModel();
   const t = typingBubble();
-  t.innerHTML = "✍️ Drafting email…";
+  t.innerHTML = "Drafting…";
   let raw = "";
   try {
     raw = await llm([
@@ -446,8 +446,7 @@ async function doEmail(requestText) {
 
 /* ---------------- routing ---------------- */
 function noModel() {
-  addMsg("assistant", "⚠ Load an AI model first: click ⚙ Model (top right), choose a small model like " +
-    "Llama-3.2-1B, press Load. ഒരിക്കൽ മാത്രം download ചെയ്താൽ മതി.", { error: true });
+  addMsg("assistant", "Load a model first — ⚙ → Load.", { error: true });
   $("modelPanel").classList.add("open");
   $("overlay").classList.add("open");
   done();
@@ -466,13 +465,7 @@ async function send(text) {
     if (cmd && cmd[1] === "summarize") return await doDocSummary();
     if (cmd && cmd[1] === "help") {
       addMsg("assistant",
-        "**Commands & tools**\n" +
-        "- `/search topic` — web search via Wikipedia\n" +
-        "- `/place name` — find places on the map (OpenStreetMap)\n" +
-        "- `/email describe` — draft an email, open in your mail app\n" +
-        "- " + "`/summarize`" + " — summarize the loaded document\n" +
-        "- Toolbar buttons below do the same things.\n\n" +
-        "സാധാരണ ചോദ്യങ്ങൾ നേരിട്ട് ടൈപ്പ് ചെയ്താൽ മതി.");
+        "`/search` · `/place` · `/email` · `/summarize`\nToolbar buttons do the same.");
       done();
       return;
     }
@@ -536,13 +529,7 @@ document.querySelectorAll(".tool").forEach((btn) =>
       document.querySelectorAll(".tool").forEach((b) => b.classList.remove("on"));
       btn.classList.add("on");
     }
-    const hints = {
-      search: "🔍 Now type what to search (e.g. \"Kerala history\")",
-      place: "📍 Type a place (e.g. \"Kochi airport\")",
-      email: "✉️ Describe the email you want (e.g. \"leave application for 2 days\")",
-      code: "💻 Code mode — describe the program you want",
-    };
-    if (hints[tool]) toast(hints[tool]);
+
   }));
 
 $("fileInput").addEventListener("change", (e) => {
@@ -554,13 +541,13 @@ $("fileInput").addEventListener("change", (e) => {
 function openPanel() { $("modelPanel").classList.add("open"); $("overlay").classList.add("open"); }
 function closePanel() { $("modelPanel").classList.remove("open"); $("overlay").classList.remove("open"); }
 $("openPanel").addEventListener("click", openPanel);
-$("modelStatus").addEventListener("click", openPanel);
+$("modelChip").addEventListener("click", openPanel);
 $("closePanel").addEventListener("click", closePanel);
 $("overlay").addEventListener("click", closePanel);
 
 $("loadBtn").addEventListener("click", () => loadModel($("modelSel").value));
 $("modelSel").addEventListener("change", () => {
-  if (engine) toast("Press Load to switch to the new model");
+  if (engine) toast("Press Load to switch");
 });
 $("savePersona").addEventListener("click", () => {
   settings.persona = $("persona").value.trim();
@@ -588,8 +575,7 @@ chatEl.addEventListener("click", (e) => {
 if (!navigator.gpu) {
   const n = $("notice");
   n.classList.add("show");
-  n.textContent = "⚠ This browser does not support WebGPU. Use Chrome or Edge (desktop) to run the local AI model. " +
-    "Search, places and document tools still work after loading a model — please switch browsers for full speed.";
+  n.textContent = "WebGPU not available — use Chrome or Edge.";
 }
 populateModels();
 loadAll();
